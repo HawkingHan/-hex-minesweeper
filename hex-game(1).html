@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>六边形扫雷</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+        font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 20px;
+    }
+
+    .game-container {
+        background: #fff;
+        border-radius: 20px;
+        padding: 26px 30px 30px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, .3);
+        max-width: 100%;
+    }
+
+    h1 {
+        text-align: center;
+        color: #333;
+        margin-bottom: 18px;
+        font-size: 26px;
+    }
+
+    .stats {
+        display: flex;
+        justify-content: space-around;
+        margin-bottom: 18px;
+        padding: 12px;
+        background: #f5f5f5;
+        border-radius: 10px;
+    }
+
+    .stat-box { text-align: center; }
+    .stat-label { font-size: 12px; color: #666; margin-bottom: 4px; letter-spacing: 1px; }
+    .stat-value { font-size: 22px; font-weight: bold; color: #333; }
+
+    #game-board {
+        --hex-width: 58px;
+        --hex-height: 66px;
+        width: calc(7.5 * var(--hex-width));
+        max-width: 100%;
+        margin: 0 auto;
+        padding: 10px 0;
+    }
+
+    .hex-row {
+        display: flex;
+        justify-content: flex-start;
+        margin-top: calc(-0.25 * var(--hex-height));
+        pointer-events: none;   /* 行容器不拦截点击，避免遮住下一行的上边缘 */
+    }
+    .hex-row:first-child { margin-top: 0; }
+    .hex-row.odd { margin-left: calc(0.5 * var(--hex-width)); }
+
+    .hex-cell {
+        width: var(--hex-width);
+        height: var(--hex-height);
+        flex: none;
+        background: #7cb342;
+        cursor: pointer;
+        position: relative;
+        transition: background .15s, transform .15s, filter .15s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 19px;
+        user-select: none;
+        pointer-events: auto;   /* 仅六边形本身可点击 */
+        clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    }
+    .hex-cell:hover:not(.revealed):not(.flagged) {
+        filter: brightness(1.15);
+        transform: scale(1.06);
+        z-index: 2;
+    }
+
+    .hex-cell.revealed {
+        background: #e8f5e9;
+        cursor: default;
+    }
+    .hex-cell.revealed:hover { transform: none; filter: none; }
+
+    .hex-cell.flagged { background: #9ccc65; }
+    .hex-cell.flagged::after { content: '🚩'; font-size: 24px; }
+    .hex-cell.wrong-flag { background: #ffccbc; }
+    .hex-cell.wrong-flag::after { content: '❌'; font-size: 22px; }
+
+    .hex-cell.mine { background: #ef5350; }
+    .hex-cell.mine::after { content: '💣'; font-size: 22px; }
+
+    .hex-cell.exploded {
+        background: #d32f2f;
+        animation: shake .45s;
+    }
+
+    @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-4px); }
+        75% { transform: translateX(4px); }
+    }
+
+    .n1 { color: #1976d2; }
+    .n2 { color: #388e3c; }
+    .n3 { color: #d32f2f; }
+    .n4 { color: #7b1fa2; }
+    .n5 { color: #ff6f00; }
+    .n6 { color: #0097a7; }
+
+    .controls {
+        display: flex;
+        justify-content: center;
+        gap: 14px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+    }
+
+    button {
+        padding: 12px 26px;
+        font-size: 15px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all .2s;
+        font-weight: bold;
+        font-family: inherit;
+        color: #fff;
+    }
+
+    .btn-new { background: linear-gradient(135deg, #7cb342, #558b2f); }
+    .btn-new:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(124, 179, 66, .45); }
+
+    .btn-flag { background: linear-gradient(135deg, #e91e63, #ad1457); }
+    .btn-flag.active {
+        background: linear-gradient(135deg, #c2185b, #880e4f);
+        box-shadow: 0 0 18px rgba(194, 24, 91, .6);
+    }
+
+    .message {
+        text-align: center;
+        font-size: 20px;
+        font-weight: bold;
+        min-height: 30px;
+        margin-bottom: 8px;
+    }
+    .message.win { color: #2e7d32; }
+    .message.lose { color: #c62828; }
+
+    .instructions {
+        margin-top: 18px;
+        padding: 14px 16px;
+        background: #fff3e0;
+        border-radius: 10px;
+        border-left: 4px solid #ff9800;
+    }
+    .instructions h3 { color: #e65100; margin-bottom: 8px; font-size: 15px; }
+    .instructions ol { padding-left: 20px; color: #555; line-height: 1.9; font-size: 13px; }
+
+    @media (max-width: 700px) {
+        body { padding: 12px; }
+        .game-container { padding: 18px 14px 20px; }
+        h1 { font-size: 20px; }
+        #game-board {
+            --hex-width: min(42px, calc((100vw - 56px) / 7.5));
+            --hex-height: calc(var(--hex-width) * 66 / 58);
+        }
+        .hex-cell { font-size: 15px; }
+        .hex-cell.flagged::after { font-size: 19px; }
+    }
+</style>
+</head>
+<body>
+<div class="game-container">
+    <h1>🔺 六边形扫雷 🔺</h1>
+
+    <div class="stats">
+        <div class="stat-box">
+            <div class="stat-label">剩余地雷</div>
+            <div class="stat-value" id="mine-count">10</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">已点击</div>
+            <div class="stat-value" id="click-count">0</div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button class="btn-new" id="btn-new">🃏 新游戏</button>
+        <button class="btn-flag" id="btn-flag">🚩 插旗模式：关</button>
+    </div>
+
+    <div class="message" id="message"></div>
+
+    <div id="game-board"></div>
+
+    <div class="instructions">
+        <h3>📖 游戏说明</h3>
+        <ol>
+            <li><strong>左键单击</strong>揭开格子，小心别踩到地雷！</li>
+            <li><strong>右键单击</strong>（或开启插旗模式后左键）放置旗子标记地雷。</li>
+            <li><strong>双击已揭开的数字格</strong>：当周围旗子数等于数字时，揭开其余相邻格。</li>
+            <li>格子上的数字表示周围 <strong>6 个相邻格子</strong>中的地雷数量。</li>
+            <li>揭开所有非地雷格子即可获胜 🎉</li>
+        </ol>
+    </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    var ROWS = 8;           // 行数
+    var COLS = 7;           // 每行格子数
+    var MINES = 10;         // 地雷总数
+
+    var boardEl   = document.getElementById('game-board');
+    var mineCountEl = document.getElementById('mine-count');
+    var clickCountEl = document.getElementById('click-count');
+    var messageEl = document.getElementById('message');
+    var btnNew    = document.getElementById('btn-new');
+    var btnFlag   = document.getElementById('btn-flag');
+
+    var state = null;
+    var flagMode = false;
+    // 尖顶六边形 odd-r 偏移布局的 6 个邻居方向
+    function neighbors(r, c) {
+        var d = (r % 2 === 0)
+            ? [[-1, -1], [-1, 0], [0, -1], [0, 1], [1, -1], [1, 0]]   // 偶数行
+            : [[-1, 0], [-1, 1], [0, -1], [0, 1], [1, 0], [1, 1]];     // 奇数行
+        var out = [];
+        for (var i = 0; i < d.length; i++) {
+            var nr = r + d[i][0], nc = c + d[i][1];
+            if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS) out.push([nr, nc]);
+        }
+        return out;
+    }
+
+    function idx(r, c) { return r * COLS + c; }
+
+    function newGame() {
+        // 重置状态（地雷推迟到首次点击时生成，保证首点安全）
+        state = {
+            mines: new Set(),
+            counts: new Array(ROWS * COLS).fill(0),
+            revealed: new Set(),
+            flagged: new Set(),
+            clicks: 0,
+            over: false,
+            firstClick: true,
+            cells: []          // DOM 引用
+        };
+
+        // 渲染棋盘
+        boardEl.innerHTML = '';
+        state.cells = [];
+        for (var row = 0; row < ROWS; row++) {
+            var rowEl = document.createElement('div');
+            rowEl.className = 'hex-row' + (row % 2 === 1 ? ' odd' : '');
+            for (var col = 0; col < COLS; col++) {
+                var cell = document.createElement('div');
+                cell.className = 'hex-cell';
+                cell.dataset.row = row;
+                cell.dataset.col = col;
+                rowEl.appendChild(cell);
+                state.cells[idx(row, col)] = cell;
+            }
+            boardEl.appendChild(rowEl);
+        }
+
+        messageEl.textContent = '';
+        messageEl.className = 'message';
+        updateStats();
+    }
+
+    // 布雷：safe 集合内的格子保证无雷（首点及其邻居）
+    function placeMines(safe) {
+        var pool = [];
+        for (var i = 0; i < ROWS * COLS; i++) {
+            if (!safe.has(i)) pool.push(i);
+        }
+        for (var k = pool.length - 1; k > 0; k--) {
+            var j = Math.floor(Math.random() * (k + 1));
+            var t = pool[k]; pool[k] = pool[j]; pool[j] = t;
+        }
+        for (var m = 0; m < MINES && m < pool.length; m++) state.mines.add(pool[m]);
+
+        // 计算每格周围雷数
+        for (var r = 0; r < ROWS; r++) {
+            for (var c = 0; c < COLS; c++) {
+                var n = 0, nb = neighbors(r, c);
+                for (var q = 0; q < nb.length; q++) {
+                    if (state.mines.has(idx(nb[q][0], nb[q][1]))) n++;
+                }
+                state.counts[idx(r, c)] = n;
+            }
+        }
+    }
+
+    function updateStats() {
+        var flags = state.flagged.size;
+        var remainingMines = MINES - flags;
+        mineCountEl.textContent = String(remainingMines);
+        clickCountEl.textContent = state.clicks;
+    }
+
+    function reveal(r, c) {
+        if (state.over) return;
+        var i = idx(r, c);
+        if (state.revealed.has(i) || state.flagged.has(i)) return;
+
+        // 首次点击时才布雷，保证首点及其邻居无雷
+        if (state.firstClick) {
+            state.firstClick = false;
+            var safe = new Set([i]);
+            neighbors(r, c).forEach(function (nb) { safe.add(idx(nb[0], nb[1])); });
+            placeMines(safe);
+        }
+
+        // 踩雷
+        if (state.mines.has(i)) {
+            gameOver(i);
+            return;
+        }
+
+        // 迭代式洪水填充
+        var stack = [[r, c]];
+        while (stack.length) {
+            var cur = stack.pop();
+            var ci = idx(cur[0], cur[1]);
+            if (state.revealed.has(ci) || state.flagged.has(ci)) continue;
+            if (state.mines.has(ci)) continue;
+
+            state.revealed.add(ci);
+            var cell = state.cells[ci];
+            cell.classList.add('revealed');
+
+            var n = state.counts[ci];
+            if (n > 0) {
+                cell.textContent = n;
+                cell.classList.add('n' + n);
+            } else {
+                var nb = neighbors(cur[0], cur[1]);
+                for (var q = 0; q < nb.length; q++) {
+                    if (!state.revealed.has(idx(nb[q][0], nb[q][1]))) stack.push(nb[q]);
+                }
+            }
+        }
+        checkWin();
+    }
+
+    // 双击数字格：旗子数吻合时展开相邻格；错旗仍可能踩雷。
+    function revealNeighbors(r, c) {
+        if (state.over || flagMode) return;
+        var center = idx(r, c);
+        var number = state.counts[center];
+        if (!state.revealed.has(center) || number === 0) return;
+
+        var adjacent = neighbors(r, c);
+        var flags = adjacent.filter(function (nb) {
+            return state.flagged.has(idx(nb[0], nb[1]));
+        }).length;
+        if (flags !== number) return;
+
+        var unopened = adjacent.filter(function (nb) {
+            var i = idx(nb[0], nb[1]);
+            return !state.flagged.has(i) && !state.revealed.has(i);
+        });
+        if (!unopened.length) return;
+
+        state.clicks++;
+        for (var i = 0; i < unopened.length && !state.over; i++) {
+            reveal(unopened[i][0], unopened[i][1]);
+        }
+        updateStats();
+    }
+
+    function toggleFlag(r, c) {
+        if (state.over) return;
+        var i = idx(r, c);
+        if (state.revealed.has(i)) return;
+
+        var cell = state.cells[i];
+        if (state.flagged.has(i)) {
+            state.flagged.delete(i);
+            cell.classList.remove('flagged');
+        } else {
+            state.flagged.add(i);
+            cell.classList.add('flagged');
+        }
+        updateStats();
+    }
+
+    function gameOver(explodedIdx) {
+        state.over = true;
+
+        // 显示所有地雷
+        state.mines.forEach(function (i) {
+            var cell = state.cells[i];
+            cell.classList.add('mine');
+            cell.classList.remove('flagged');
+        });
+        state.flagged.forEach(function (i) {
+            if (!state.mines.has(i)) {
+                state.cells[i].classList.remove('flagged');
+                state.cells[i].classList.add('wrong-flag');
+            }
+        });
+        state.cells[explodedIdx].classList.add('exploded');
+
+        messageEl.textContent = '💥 踩到地雷了，游戏结束！';
+        messageEl.className = 'message lose';
+    }
+
+    function checkWin() {
+        var total = ROWS * COLS;
+        if (state.revealed.size === total - MINES) {
+            state.over = true;
+            // 剩余地雷自动标旗，剩余计数归零
+            state.mines.forEach(function (i) {
+                state.flagged.add(i);
+                state.cells[i].classList.add('flagged');
+            });
+            updateStats();
+            messageEl.textContent = '🎉 恭喜你，排雷成功！';
+            messageEl.className = 'message win';
+        }
+    }
+
+    // ---- 事件绑定 ----
+    boardEl.addEventListener('click', function (e) {
+        var cell = e.target.closest('.hex-cell');
+        if (!cell || state.over) return;
+        var r = +cell.dataset.row, c = +cell.dataset.col;
+        if (state.revealed.has(idx(r, c))) return;   // 已揭开的格子不再计数
+        state.clicks++;
+        if (flagMode) toggleFlag(r, c); else reveal(r, c);
+        updateStats();
+    });
+
+    boardEl.addEventListener('contextmenu', function (e) {
+        var cell = e.target.closest('.hex-cell');
+        if (!cell) return;
+        e.preventDefault();
+        if (!cell || state.over) return;
+        var r = +cell.dataset.row, c = +cell.dataset.col;
+        if (state.revealed.has(idx(r, c))) return;   // 已揭开的格子不能插旗
+
+        state.clicks++;
+        toggleFlag(r, c);
+        updateStats();
+    });
+
+    boardEl.addEventListener('dblclick', function (e) {
+        var cell = e.target.closest('.hex-cell');
+        if (!cell) return;
+        revealNeighbors(+cell.dataset.row, +cell.dataset.col);
+    });
+
+    btnNew.addEventListener('click', function () {
+        newGame();
+    });
+
+    btnFlag.addEventListener('click', function () {
+        flagMode = !flagMode;
+        btnFlag.textContent = '🚩 插旗模式：' + (flagMode ? '开' : '关');
+        btnFlag.classList.toggle('active', flagMode);
+    });
+
+    // 启动
+    newGame();
+})();
+</script>
+</body>
+</html>
